@@ -1,27 +1,16 @@
-
-from flask_sqlalchemy import SQLAlchemy
-from werkzeug.security import generate_password_hash
 from email.policy import default
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import ForeignKey
 import uuid
 import enum
-from datetime import datetime, timezone
-from flask_sqlalchemy import SQLAlchemy
-from flask_login import UserMixin
-
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///petheaven.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///petheaven2.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 
-
-def init_db(app):
-    db.init_app(app)
-    
 #******************************************* Dogs Ownership Table (Many-to-Many) **********************************
 dog_ownership = db.Table(
     "dog_ownership",
@@ -36,10 +25,15 @@ user_service_provider = db.Table(
     db.Column("service_id", db.String(36), db.ForeignKey("service_provider.service_id"), primary_key=True)
 )
 
-
+# ***************************************** User Table ************************************************
+class UserType(enum.Enum):
+    OWNER = "PET OWNER"
+    ADMIN = "ADMIN"
+    SERVICE_PROVIDER = "SERVICE PROVIDER"
+    
 class User(db.Model):
     __tablename__ = 'user'
-    user_id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_name = db.Column(db.String(50), nullable=False, unique=True)
     email_id = db.Column(db.String(50), unique=True, nullable=False)
     password = db.Column(db.String(128), nullable=False)  # Storing hashed password
@@ -56,16 +50,7 @@ class User(db.Model):
     dogs = db.relationship("Dogs", secondary=dog_ownership, back_populates="owners")
     
     def __repr__(self):
-        return f"<User {self.user_type} - {self.name}>"
-
-class Service(db.Model):
-    __tablename__ = 'services'
-    service_id = db.Column(db.Integer, primary_key=True)
-    service_name = db.Column(db.String(50))
-    description = db.Column(db.Text)  # Added description column
-
-
-
+        return f"<User {self.user_type} - {self.user_name}>"
 
 
 
@@ -91,15 +76,15 @@ class Dogs(db.Model):
 
 # ****************************************** Service Provider Table *******************************************
 class ServiceProviderStatus(enum.Enum):
-    PENDING = "Pending"
-    ACCEPTED = "Accepted"
-    REJECTED = "Rejected"
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    REJECTED = "REJECTED"
 
 class ServiceProvider(db.Model):
     __tablename__ = "service_provider"
-    
-    service_id = db.Column(db.Integer, db.ForeignKey('services.service_id'), primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.user_id'), primary_key=True)    
+
+    service_id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = db.Column(db.String(36), db.ForeignKey("user.user_id"), nullable=False, default=lambda: str(uuid.uuid4()))
     name = db.Column(db.String(100), nullable=False)
     service_name = db.Column(db.String(60), nullable=False)
     address = db.Column(db.String(255), nullable=False)
@@ -115,6 +100,13 @@ class ServiceProvider(db.Model):
     def __repr__(self):
         return f"<ServiceProvider {self.name}>"
 
+#******************************************* Service table creation *********************************************
+class Service(db.Model):
+    __tablename__ = "services"
+
+    service_id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    service_name = db.Column(db.String(60), nullable=False)
+    service_description = db.Column(db.String(255), nullable=False)
 
 # ****************************************** Booking Table ****************************************************
 class Booking(db.Model):
@@ -122,8 +114,8 @@ class Booking(db.Model):
 
     booking_id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = db.Column(db.String(36), db.ForeignKey("user.user_id"), nullable=False)
-    booking_date = db.Column(db.DateTime, default=db.func.current_timestamp())
-    duration = db.Column(db.Time, nullable=False)
+    booking_date = db.Column(db.DateTime)
+    duration = db.Column(db.Integer, nullable=False)
     total_cost = db.Column(db.Integer, nullable=False)
 
     booking_details = db.relationship("BookingDetail", backref="booking", lazy=True)
@@ -144,7 +136,7 @@ class BookingDetail(db.Model):
     service_name = db.Column(db.String(100), nullable=False)
     service_price = db.Column(db.Integer, nullable=False)
 
-    __table_args__ = (
+    _table_args_ = (
         db.ForeignKeyConstraint(
             ['service_id', 'user_id'],
             ['service_provider.service_id', 'service_provider.user_id']
@@ -156,8 +148,8 @@ class BookingDetail(db.Model):
 
 # ********************************************* Order Table **************************************************
 class PaymentStatus(enum.Enum):
-    PENDING = "Pending"
-    SUCCESS = "Success"
+    PENDING = "PENDING"
+    SUCCESS = "SUCCESS"
 
 class Order(db.Model):
     __tablename__ = "order"
@@ -221,7 +213,7 @@ class CartItem(db.Model):
     def __repr__(self):
         return f"<CartItem {self.cart_item_id} - {self.quantity}>"
 
-
+#****************************************** Event Table ******************************************************
 class Event(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
@@ -234,7 +226,7 @@ class Event(db.Model):
     image_filename = db.Column(db.String(200), nullable=False, default="default.jpg") 
 
 
-
+#****************************************** Registration Table ******************************************************
 
 class Registration(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -252,7 +244,7 @@ class Registration(db.Model):
     # Relationship with User 
     user = db.relationship('User', backref=db.backref('registrations', lazy=True))
 
-
+#********************************************* Result Table *******************************************************
 
 class Result(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -265,70 +257,7 @@ class Result(db.Model):
     # Relationship with Registration
     registration = db.relationship('Registration', backref=db.backref('result', uselist=False, lazy=True))
 
-class Transaction(db.Model):
-    __tablename__ = 'transaction'
 
-    t_id = db.Column(db.String(50), primary_key=True)
-    date = db.Column(db.DateTime, nullable=False)
-    
-    # Foreign key to the 'User' table
-    user_id = db.Column(db.String(36), db.ForeignKey('user.user_id'), nullable=False)  
-
-    # Composite foreign key (service_id, user_id) referencing ServiceProvider table
-    service_id = db.Column(db.Integer, nullable=False)
-    provider_user_id = db.Column(db.Integer, nullable=False)
-
-    __table_args__ = (
-        db.ForeignKeyConstraint(
-            ['service_id', 'provider_user_id'],
-            ['service_provider.service_id', 'service_provider.user_id']
-        ),
-    )
-
-    # Relationships
-    user = db.relationship("User", backref="transactions", lazy=True)  
-    service_provider = db.relationship("ServiceProvider", backref="transactions", lazy=True)
-
-    def __repr__(self):
-        return f"<Transaction {self.t_id} - User {self.user_id} - Service {self.service_id}>"
-
-
-# Function to insert predefined data including admin
-def insert_initial_data():
-    if Service.query.count() == 0:
-        services_data = [
-            (1, "Grooming", "Keep your furry friends looking and feeling their best with our professional grooming services."),
-            (2, "Therapies", "Enhance your pet’s well-being with specialized therapy services like physiotherapy and hydrotherapy."),
-            (3, "Health", "Comprehensive health services including check-ups, vaccinations, and nutritional guidance."),
-            (4, "Training", "Expert training programs for obedience, behavior correction, and skill development."),
-            (5, "Spa", "Luxurious spa services including soothing baths, fur conditioning, and aromatherapy."),
-        ]
-        for service in services_data:
-            db.session.add(Service(service_id=service[0], service_name=service[1], description=service[2]))
-        db.session.commit()
-        print("Inserted initial service data.")
-
-    # Insert admin directly into User table
-    admin_username = "Admin@123"
-    admin_email = "admin@example.com"
-    admin_password = "password@123"
-
-    admin_user = User.query.filter_by(user_name=admin_username).first()
-    if not admin_user:
-        hashed_password = generate_password_hash(admin_password)
-        admin = User(
-            user_name=admin_username,
-            email_id=admin_email,
-            password=hashed_password,
-            phone_number=None,
-            address=None,
-            user_type=None,  # NULL for Admin
-            is_active=True
-        )
-        db.session.add(admin)
-        db.session.commit()
-        print("Inserted default admin user.")
-        
 with app.app_context():
     db.create_all()
-    insert_initial_data()
+
